@@ -1,0 +1,91 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: AWS CloudFormation which creates the resources for First Phase 3dB O+ Swap
+
+# Parameters for the cloudformation template
+Parameters:
+  S3RawCsvBucketName:
+    Type: String
+    Description: Bucket for uploading raw data files in csv format
+
+  S3ParquetProcessedBucketName:
+    Type: String
+    Description: Bucket for loading processed data files in parquet format
+
+  S3CsvOutputBucketName:
+    Type: String
+    Description: Bucket name for storing all final reports
+
+Resources:
+  AdminRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AdminRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: arn:aws:iam::123456789012:root
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+
+  S3BucketForDataRawCsv:
+    Type: AWS::S3::Bucket
+    Properties: 
+      BucketName: !Ref S3RawCsvBucketName
+      Tags:
+      - Key: identifier
+        Value: raw-csv-bucket
+
+  S3BucketForDataProcessedParquet:
+    Type: AWS::S3::Bucket
+    Properties: 
+      BucketName: !Ref S3ParquetProcessedBucketName
+      Tags:
+      - Key: identifier
+        Value: processed-parquet-bucket
+
+  S3BucketForDataCsvOutput:
+    Type: AWS::S3::Bucket
+    Properties: 
+      BucketName: !Ref S3CsvOutputBucketName
+      Tags:
+      - Key: identifier
+        Value: csv-output-bucket
+
+  # Database created for the tables to reside in
+  GlueDatabase:
+    Type: AWS::Glue::Database
+    Properties: 
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput: 
+        Name: 3db_consult_iceberg_database
+        Description: "This database contains iceberg tables for the 3db O+ Swap"
+
+  # Create Athena Workgroup 
+  AthenaWorkGroupIceberg:
+    DependsOn: 
+      - GlueDatabase
+      - S3BucketForDataCsvOutput
+    Type: AWS::Athena::WorkGroup
+    Properties:
+      Name: AthenaWorkGroupIceberg
+      Description: Workgroup for Iceberg queries
+      State: ENABLED
+      WorkGroupConfiguration:
+        ResultConfiguration:
+          OutputLocation: !Sub s3://${S3CsvOutputBucketName}/athena_results
+
+Outputs:
+  RawCsvBucket:
+    Value: !Ref S3BucketForDataRawCsv
+    Description: Bucket for uploading raw CSV files
+
+  ProcessedParquetBucket:
+    Value: !Ref S3BucketForDataProcessedParquet
+    Description: Bucket for processed Parquet files
+
+  CsvOutputBucket:
+    Value: !Ref S3BucketForDataCsvOutput
+    Description: Bucket for Athena query results and reports
